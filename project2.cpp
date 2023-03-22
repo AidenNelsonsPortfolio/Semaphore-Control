@@ -14,8 +14,8 @@
 #define NUM_REPEAT 5 // each process repeats 
 #define READER_TIME_01 300 // 300ms = 0.3 seconds
 #define READER_TIME_02 800 // 800ms = 0.8 seconds
-#define WRITER_TIME_01 1600 // 1200ms = 1.2 seconds
-#define WRITE_TIME_02 1200 // 1600ms = 1.6 seconds
+#define WRITER_TIME_01 1600 // 1600ms = 1.2 seconds
+#define WRITE_TIME_02 500 // 500ms = 0.5 seconds
 
 #define SHM_KEY 8265
 #define SEM_KEY1 8765
@@ -586,8 +586,6 @@ void writer(int id){
         fprintf(stderr, "Failed to wait on counting2 semaphore. Terminating ..\n");
         exit(0);
     }
-
-    millisleep(id*1000);
 
     printf("Writer %d enters the for loop \n", id);
     fflush(stdout);
