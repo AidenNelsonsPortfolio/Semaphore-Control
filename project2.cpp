@@ -388,7 +388,7 @@ void reader(int id){
 
         //Check if there is a writer waiting to enter
         if(shmp->writer_waiting_status[0] == 1 || shmp->writer_waiting_status[1] == 1){
-            printf("Readers are waiting, because a writer wants to write. \n");
+            printf("Readers are waiting, because a writer wants to write. \n\n");
             fflush(stdout);
 
             mutex1_operations[0].sem_num = 0;
@@ -549,7 +549,7 @@ void reader(int id){
 
     }
 
-    printf("\n*****************\nReader %d is done with while loop \n*****************\n\n", id);
+    printf("\n*****************Reader %d is done with while loop*****************\n\n", id);
     fflush(stdout);
 
     //Signal counting2 semaphore
@@ -614,7 +614,7 @@ void writer(int id){
         sprintf(res, "%s%d", my_message, i+1);
 
         //Start of the critical section
-        printf("Writer %d starts posting a new message: \n", id);
+        printf("!!!!!!!!!!!!!!!!!\nWriter %d starts posting a new message: \n", id);
         printf("%s\n\n", res);
         fflush(stdout);
 
@@ -623,7 +623,7 @@ void writer(int id){
         sleep_time = WRITE_TIME_02;
         millisleep(sleep_time);
 
-        printf("Writer %d finishes posting a new message.\n\n", id);
+        printf("Writer %d finishes posting a new message.\n!!!!!!!!!!!!!!!!!\n\n", id);
         fflush(stdout);
         //End of the critical section
 
@@ -645,7 +645,7 @@ void writer(int id){
 
     }
 
-    printf("\n*****************\nWriter %d is done with the for loop \n*****************\n", id);
+    printf("\n*****************Writer %d is done with the for loop*****************\n\n", id);
     fflush(stdout);
 
     //Update writer_status in shared memory
