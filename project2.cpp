@@ -12,11 +12,13 @@
 * with semaphores and shared memory objects.                  *
 * ********************************************************** */
 #define NUM_REPEAT 5 // each process repeats 
-#define READER_TIME_01 300 // 300ms = 0.3 seconds
-#define READER_TIME_02 800 // 800ms = 0.8 seconds
-#define WRITER_TIME_01 1600 // 1600ms = 1.2 seconds
-#define WRITE_TIME_02 500 // 500ms = 0.5 seconds
+#define READER_TIME_01   500000   // 0.5 seconds
+#define READER_TIME_02   500000   // 0.5 seconds
 
+#define WRITER_TIME_01   500000   // 0.5 seconds
+#define WRITER_TIME_02   500000   // 0.5 seconds
+
+//SHM and SEM keys
 #define SHM_KEY 8265
 #define SEM_KEY1 8765
 #define SEM_KEY2 8265
@@ -24,12 +26,14 @@
 #define SEM_KEY4 9565
 #define SEM_KEY5 7265
 
+//Header files
 #include <stdio.h>
 #include <stdlib.h> 
 #include <string.h>
 #include <string>
 #include <sys/types.h>
 #include <unistd.h>  
+#include <time.h>                 
 
 //Semaphore includes
 #include <sys/sem.h>
@@ -88,7 +92,8 @@ struct sembuf counting2_operations[1];
 
 //Function prototypes
 
-void millisleep(unsigned ms);
+void msleep(unsigned micro_seconds);
+unsigned int uniform_rand(void);
 void writer(int id);
 void reader(int id);
 
@@ -96,6 +101,9 @@ void reader(int id);
 //Main function
 
 int main(void){
+    //Initialize random number generator
+    srand((unsigned int)time(NULL));
+
     printf("Main has been started...\n");
     fflush(stdout);
 
@@ -117,6 +125,7 @@ int main(void){
         fprintf(stderr, "Failed to attach the shared memory. Terminating ..\n");
         exit(0);
     }
+    //Initialize shared memory contents
     shmp->reader_count = 0;
     shmp->writer_finish_status[0] = 1;
     shmp->writer_finish_status[1] = 1;
@@ -124,7 +133,9 @@ int main(void){
     shmp->writer_waiting_status[1] = 0;
     sprintf(shmp->posted_msg, "No one has posted a message.");
 
-    //Create semaphores
+
+
+    //************Create semaphores************
 
     //Mutex 1
     mutex1_id = semget(SEM_KEY1, 1, 0666 | IPC_CREAT);
@@ -138,7 +149,6 @@ int main(void){
         fprintf(stderr, "Failed to initialize the semaphore. Terminating ..\n");
         exit(0);
     }
-
 
 
     //Mutex 2
@@ -169,7 +179,6 @@ int main(void){
     }
 
 
-
     //Counting 1
     counting1_id = semget(SEM_KEY4, 1, 0666 | IPC_CREAT);
     if (counting1_id < 0){
@@ -184,7 +193,6 @@ int main(void){
     }
 
     
-
     //Counting 2
     counting2_id = semget(SEM_KEY5, 1, 0666 | IPC_CREAT);
     if (counting2_id < 0){
@@ -199,9 +207,9 @@ int main(void){
     }
 
 
-    //Create processes
+    //***************Create child processes***************
 
-    //Parent is the first reader process.
+    //Parent is the first reader process, makes others.
 
     //Create the second reader process
     pid = fork();
@@ -268,7 +276,7 @@ int main(void){
 
 
     //Parent waits for all child processes to terminate
-    //wait on counting2 decremet to 0 (-6)
+    //(wait on counting2 decremet to 0) (-6)
 
     //Wait on counting2
     counting2_operations[0].sem_num = 0;
@@ -280,6 +288,9 @@ int main(void){
         exit(0);
     }
 
+    printf("\n\n****All children processes have finished, detaching and deleting shared resources.****\n\n");
+    fflush(stdout);
+    
     //Parent removes shared memory and semaphores
     //Remove shared memory, check for errors
     if (shmdt(shmp) < 0){
@@ -314,22 +325,43 @@ int main(void){
         exit(0);
     }
 
+    printf("#### All resources have been deleted, terminating. ####\n");
+
+    //Parent terminates
     return 0;
 }
 
 
-// millisleep /////////////////////////////////////////////////////////////////
-void millisleep(unsigned ms)
+// msleep /////////////////////////////////////////////////////////////////
+void msleep(unsigned micro_seconds)
 {
-    usleep(1000*ms);
+     unsigned int RAND_FACTOR;
+     unsigned int RAND_SLEEP_TIME;
+
+     RAND_FACTOR = uniform_rand();
+     RAND_SLEEP_TIME = (int)((float)RAND_FACTOR / (float(100.0)) * (float)(micro_seconds));
+
+     usleep(RAND_SLEEP_TIME);
 }
 
+// uniform_rand ///////////////////////////////////////////////////////////////
+unsigned int uniform_rand(void)
+/* generate a random number 0 ~ 99 */
+{
+    unsigned int my_rand;
+    my_rand = rand() % 100;
 
+    return (my_rand);
+}
+
+// reader /////////////////////////////////////////////////////////////////
 void reader(int id){
     int sleep_time;
     
     //If it is the parent process, add 5 to counting2, b/c it means that 
-    //all child processes are made else wait on counting2.
+    //all child processes are made. 
+    //Else, you are a child, wait on counting2.
+
     if (pid != 0){
         printf("All child processes have been made.\nParent process is about to signal for children to start\n");
         fflush(stdout);
@@ -366,12 +398,14 @@ void reader(int id){
 
     printf("Reader %d entering the while loop.\n", id);
     fflush(stdout);
-
+    
+    //Reader enters the while loop
     while(shmp->writer_finish_status[0] == 1 || shmp->writer_finish_status[1] == 1){
         sleep_time = READER_TIME_01;
         bool waited = false;
 
-        millisleep(sleep_time);
+        //Sleep for a random amount of time
+        msleep(sleep_time);
         printf("Reader %d likes to read the posted message.\n\n", id);
         fflush(stdout);
 
@@ -387,6 +421,7 @@ void reader(int id){
         }
 
         //Check if there is a writer waiting to enter
+        //If there is, wait on Mutex 1 (mutex1) till it is done writing.
         if(shmp->writer_waiting_status[0] == 1 || shmp->writer_waiting_status[1] == 1){
             printf("Readers are waiting, because a writer wants to write. \n\n");
             fflush(stdout);
@@ -413,7 +448,8 @@ void reader(int id){
             fprintf(stderr, "Failed to wait on mutex semaphore. Terminating ..\n");
             exit(0);
         }
-
+        
+        //Increment reader_count
         shmp->reader_count++;
 
         //If first reader, let writers know they cannot enter
@@ -423,7 +459,7 @@ void reader(int id){
             printf("Readers are waiting on mutex1, there are currently no readers in crit. section. \n\n");
             fflush(stdout);
 
-            //Wait on mutex 1 (mutex1)
+            //Wait on mutex 1 (mutex1) as there could be writer in critical section
             mutex1_operations[0].sem_num = 0;
             mutex1_operations[0].sem_op = -1;
             mutex1_operations[0].sem_flg = 0;
@@ -482,8 +518,9 @@ void reader(int id){
         printf("%s\n\n", shmp->posted_msg);
         fflush(stdout);
         
+        //Sleep for a random amount of time
         sleep_time = READER_TIME_02;
-        millisleep(sleep_time);
+        msleep(sleep_time);
         printf("Reader %d finishes reading the posted message.\n\n", id);
         fflush(stdout);
         //End of the critical section
@@ -515,6 +552,7 @@ void reader(int id){
             exit(0);
         }
 
+        //Decrement reader_count
         shmp->reader_count--;
 
         //If last reader, let writers know they can enter
@@ -552,7 +590,7 @@ void reader(int id){
     printf("\n*****************Reader %d is done with while loop*****************\n\n", id);
     fflush(stdout);
 
-    //Signal counting2 semaphore
+    //Signal counting2 semaphore, signals that this process is done
     counting2_operations[0].sem_num = 0;
     counting2_operations[0].sem_op = 1;
     counting2_operations[0].sem_flg = 0;
@@ -562,20 +600,26 @@ void reader(int id){
         fprintf(stderr, "Failed to signal counting semaphore. Terminating ..\n");
         exit(0);
     }
+
+    //Return, and, subsequently, if child, terminate
     return;
 }
 
+//Writer function
 void writer(int id){
 
     int sleep_time;
     char my_message[100];
     char loop_num[NUM_REPEAT/10];
     char res[255];
+
+    //Start my_message with "Hello, I am writer #"
     sprintf(my_message, "Hello, I am writer %d in loop #", id);
     
 
     printf("Waiting on counting2 (Writer %d) \n", id);
     fflush(stdout);
+
     //Wait on counting2 semaphore (parent process will signal this semaphore when child processes are made)
     counting2_operations[0].sem_num = 0;
     counting2_operations[0].sem_op = -1;
@@ -589,18 +633,18 @@ void writer(int id){
 
     printf("Writer %d enters the for loop \n", id);
     fflush(stdout);
-    //Update shared memory message NUM_REPEAT times
 
+    //Update shared memory message NUM_REPEAT times (start of for loop)
     for(int i = 0; i < NUM_REPEAT; i++){
         sleep_time = WRITER_TIME_01;
-        millisleep(sleep_time);
+        msleep(sleep_time);
         
-
-        shmp-> writer_waiting_status[id-1] = 1; //Set writer status to 1 (waiting to write)
+        //Set writer status to 1 (waiting to write)
+        shmp-> writer_waiting_status[id-1] = 1; 
         printf("Writer %d likes to post its message.\n\n", id);
         fflush(stdout);
 
-        //Wait on mutex 1
+        //Wait on mutex 1, tells that there are no readers in the critical section
         mutex1_operations[0].sem_num = 0;
         mutex1_operations[0].sem_op = -1;
         mutex1_operations[0].sem_flg = 0;
@@ -610,7 +654,7 @@ void writer(int id){
             fprintf(stderr, "Failed to wait on mutex 1. Terminating ..\n");
             exit(0);
         }
-
+        //Combine my_message and loop number into res
         sprintf(res, "%s%d", my_message, i+1);
 
         //Start of the critical section
@@ -618,10 +662,12 @@ void writer(int id){
         printf("%s\n\n", res);
         fflush(stdout);
 
+        //Update shared memory message to res
         strcpy(shmp->posted_msg, res);
 
-        sleep_time = WRITE_TIME_02;
-        millisleep(sleep_time);
+        //Sleep for semi-random amount of time
+        sleep_time = WRITER_TIME_02;
+        msleep(sleep_time);
 
         printf("Writer %d finishes posting a new message.\n!!!!!!!!!!!!!!!!!\n\n", id);
         fflush(stdout);
@@ -648,7 +694,7 @@ void writer(int id){
     printf("\n*****************Writer %d is done with the for loop*****************\n\n", id);
     fflush(stdout);
 
-    //Update writer_status in shared memory
+    //Update writer_status in shared memory to 0 (finished)
     shmp->writer_finish_status[id-1] = 0;
 
     //signal counting2 semaphore
@@ -661,5 +707,7 @@ void writer(int id){
         fprintf(stderr, "Failed to signal counting semaphore. Terminating ..\n");
         exit(0);
     }
+
+    //Return, and, subsequently, terminate.
     return;
 }
